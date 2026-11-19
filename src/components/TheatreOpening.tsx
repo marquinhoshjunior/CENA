@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const SESSION_KEY = "cena-theatre-opening-seen";
 
@@ -9,43 +9,57 @@ export function TheatreOpening() {
   const [exiting, setExiting] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
 
+  const markOpeningSeen = useCallback(() => {
+    try {
+      window.sessionStorage.setItem(SESSION_KEY, "true");
+    } catch {
+      // The opening remains optional if storage is unavailable.
+    }
+  }, []);
+
   useEffect(() => {
     let startTimer: number | undefined;
     let finishTimer: number | undefined;
     let reducedTimer: number | undefined;
 
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const forceOpening =
+      new URL(window.location.href).searchParams.get("opening") === "1";
+
+    let shouldShow = true;
     try {
-      const hasOpened = window.sessionStorage.getItem(SESSION_KEY) === "true";
-      const prefersReducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)",
-      ).matches;
-
-      if (!hasOpened) {
-        window.sessionStorage.setItem(SESSION_KEY, "true");
-        document.body.style.overflow = "hidden";
-
-        startTimer = window.setTimeout(() => {
-          setReducedMotion(prefersReducedMotion);
-          setVisible(true);
-        }, 20);
-        finishTimer = window.setTimeout(
-          () => finishOpening(),
-          prefersReducedMotion ? 900 : 5200,
-        );
-        return () => {
-          window.clearTimeout(startTimer);
-          window.clearTimeout(finishTimer);
-          window.clearTimeout(reducedTimer);
-          document.body.style.overflow = "";
-        };
-      }
+      shouldShow =
+        forceOpening ||
+        window.sessionStorage.getItem(SESSION_KEY) !== "true";
     } catch {
-      return;
+      shouldShow = true;
+    }
+
+    if (shouldShow) {
+      document.body.style.overflow = "hidden";
+
+      startTimer = window.setTimeout(() => {
+        setReducedMotion(prefersReducedMotion);
+        setVisible(true);
+      }, 20);
+      finishTimer = window.setTimeout(
+        () => finishOpening(),
+        prefersReducedMotion ? 900 : 5200,
+      );
+      return () => {
+        window.clearTimeout(startTimer);
+        window.clearTimeout(finishTimer);
+        window.clearTimeout(reducedTimer);
+        document.body.style.overflow = "";
+      };
     }
 
     function finishOpening() {
       setExiting(true);
       reducedTimer = window.setTimeout(() => {
+        markOpeningSeen();
         setVisible(false);
         document.body.style.overflow = "";
       }, 420);
@@ -56,12 +70,13 @@ export function TheatreOpening() {
       window.clearTimeout(finishTimer);
       window.clearTimeout(reducedTimer);
     };
-  }, []);
+  }, [markOpeningSeen]);
 
   if (!visible) return null;
 
   const skipOpening = () => {
     setExiting(true);
+    markOpeningSeen();
     window.setTimeout(() => {
       setVisible(false);
       document.body.style.overflow = "";
